@@ -1,0 +1,30 @@
+<script src="../lightgl.js"></script>
+<script src="../fluid.js"></script>
+<script>
+window.onload = function() {
+	var image = document.getElementById('image');
+	gl = GL.create();
+	var sim = new Simulation2D(GL.Texture.fromImage(image,
+		{wrap: gl.CLAMP_TO_EDGE}));
+	gl = sim.gl;
+
+	console.log(gl.REPEAT);
+	document.body.appendChild(gl.canvas);
+
+	var boundaryMesh = new GL.Mesh({coords: true});
+	boundaryMesh.vertices.push([0.1, 0.1, 0]);
+	boundaryMesh.vertices.push([0.1, 0.700, 0]);
+	boundaryMesh.vertices.push([0.400, 0.400, 0]);
+	boundaryMesh.triangles.push([0, 1, 2]);
+	boundaryMesh.compile();
+	console.log(sim.densityField.height);
+	sim.densityBoundaries.push({
+		mesh: boundaryMesh,
+		value: [0.1, 0.3, 0.2],
+		mode: gl.TRIANGLES
+	});
+	sim.run();
+
+};
+</script>
+<img id="image" src="my_face.jpg">

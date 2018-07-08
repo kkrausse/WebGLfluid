@@ -3,8 +3,8 @@ var Simulation2D = (function() {
 	function Simulation2D(initialDensity) {
 		initialDensity = initialDensity;
 		this.gl = gl;
-		this.viscocity = 0.00001;
-		this.nu = 0.0001;
+		this.viscocity = 0.0;
+		this.nu = 0.02;
 		this.width = initialDensity.width;
 		this.height = initialDensity.height;
 		this.sources = null;
@@ -30,7 +30,7 @@ var Simulation2D = (function() {
 			gl = this.gl;
 
 			gl.onupdate = (function(dt) {
-				this.step(dt/ 10.0);
+				this.step(dt);
 			}).bind(this);
 			gl.ondraw = (function() {
 				basicMesh = basicMesh || GL.Mesh.plane({coords: true});
@@ -49,14 +49,14 @@ var Simulation2D = (function() {
 	};
 
 	function velocityStep(dt) {
-		unstabDiffuse.call(this, dt, this.velocityField, this.nu);
+		diffuse.call(this, dt, this.velocityField, this.nu, true);
 		setBoundary(this.velocityField, this.velocityBoundaries);
 		advect.call(this, dt, this.velocityField, this.velocityField);
 		setBoundary(this.velocityField, this.velocityBoundaries);
 	}
 
 	function densityStep(dt) {
-		unstabDiffuse.call(this, dt, this.densityField, this.viscocity);
+		diffuse.call(this, dt, this.densityField, this.viscocity);
 		setBoundary(this.densityField, this.densityBoundaries);
 		advect.call(this, dt, this.densityField, this.velocityField);
 		setBoundary(this.velocityField, this.velocityBoundaries);
@@ -65,7 +65,7 @@ var Simulation2D = (function() {
 	// this is the unstable version
 	// I have tested it, and it is unstable like it says.
 	// I cant get the speed of diffusion that may be needed
-	function unstabDiffuse(dt, field, diff) {
+	function diffuse(dt, field, diff, useStable) {
 			unstabShader = unstabShader || new GL.Shader('\
 				varying vec2 coord;\
 				void main() {\
@@ -79,8 +79,8 @@ var Simulation2D = (function() {
 				'varying vec2 coord;',
 				'void main() {',
 					'vec2 texelSize;',
-					'texelSize.x = 5.0 / textureSize.x;',
-					'texelSize.y = 5.0 / textureSize.y;',
+					'texelSize.x = 2.0 / textureSize.x;',
+					'texelSize.y = 2.0 / textureSize.y;',
 					'vec2 texCoord = coord;',
 					'',
 					'vec4 densityChange = -4.0 * texture2D(prevDiff, texCoord);',
@@ -98,25 +98,25 @@ var Simulation2D = (function() {
 				'}',
 			].join('\n'));
 
-		stabDiffShader = stabDiffShader || new GL.Shader(
-			varying vec2 coord;
-			void main() {
-				coord = gl_TexCoord.st;
-				gl_Position = gl_Vertex;
+		stabDiffuseShader = stabDiffuseShader || new GL.Shader([
+			'varying vec2 coord;',
+			'void main() {',
+				'coord = gl_TexCoord.st;',
+				'gl_Position = gl_Vertex;',
 			'}'
 		].join('\n'), [
-			'uniform sampler2D field;
-			'uniform float diff;'
-			'uniform float dt;'
-			'uniform vec2 textureSize;'
-			'varying vec2 coord;'
-			'void main() {'
-				'vec2 texCoord = coord;'
-				'float a = diff * textureSize.x * dt * textureSize.y;'
-				'vec2 texelSize;'
-				'vec4 change;'
-				'texelSize.x = 1.0 / textureSize.x;'
-				'texelSize.y = 1.0 / textureSize.y;'
+			'uniform sampler2D field;',
+			'uniform float diff;',
+			'uniform float dt;',
+			'uniform vec2 textureSize;',
+			'varying vec2 coord;',
+			'void main() {',
+				'vec2 texCoord = coord;',
+				'float a = diff * textureSize.x * dt * textureSize.y;',
+				'vec2 texelSize;',
+				'vec4 change;',
+				'texelSize.x = 4.0 / textureSize.x;',
+				'texelSize.y = 4.0 / textureSize.y;',
 				
 				'texCoord.x += texelSize.x;',
 				'change = texture2D(field, texCoord);',
@@ -126,28 +126,38 @@ var Simulation2D = (function() {
 				'change += texture2D(field, texCoord);',
 				'texCoord.y -= 2.0 * texelSize.y;',
 				'change += texture2D(field, texCoord);',
-				'change *= a;'
-				'change += texture2D(field, coord);'
-				
-				'gl_FragColor = change / (1+4*a);'
+				'change *= a;',
+				'change += texture2D(field, coord);',
+
+				'gl_FragColor = change / (1.0+4.0*a);',
 			'}'
 		].join('\n'));
 
-
-		/*
-		 * unstable stuff right here. wasnt working
-		this.tempTexture.drawTo(function() {
-			field.bind();
-			unstabShader.uniforms({
-				diff: diff,
-				dt: dt,
-				textureSize: [field.width, field.height]
-			}).draw(basicMesh);
-			field.unbind();
-		});
-		*/
-
-		field.swapWith(this.tempTexture);
+		if (useStable) {	
+			for (var i = 0; i < 5; i++) {
+				this.tempTexture.drawTo(function() {
+					field.bind();
+					stabDiffuseShader.uniforms({
+						diff: diff,
+						dt: dt,
+						textureSize: [field.width, field.height]
+					}).draw(basicMesh);
+					field.unbind();
+				});
+				field.swapWith(this.tempTexture);
+			}
+		} else {
+			this.tempTexture.drawTo(function() {
+				field.bind();
+				unstabShader.uniforms({
+					diff: diff,
+					dt: dt,
+					textureSize: [field.width, field.height]
+				}).draw(basicMesh);
+				field.unbind();
+			});
+			field.swapWith(this.tempTexture);
+		}
 	}
 
 	function advect(dt, advected, advector) {
@@ -164,8 +174,10 @@ var Simulation2D = (function() {
 
 			'void main() {',
 				'vec2 backtrace = texture2D(advector, coord).st;',
-				'backtrace *= dt * 0.2;',
-				'gl_FragColor = texture2D(advected, coord - backtrace);',
+				'vec2 texCoord = coord * 10.0;',
+				'backtrace *= dt;',
+				'texCoord -= backtrace;',
+				'gl_FragColor = texture2D(advected, texCoord / 10.0);',
 		'}'].join('\n'));
 
 		advectorNum = advected.id === advector.id ? 0 : 1;
@@ -214,6 +226,7 @@ var Simulation2D = (function() {
 	var basicMesh = null;
 	var solidMeshShader = null;
 	var basicTextureShader = null;
+	var stabDiffuseShader = null;
 
 	function init() {
 		basicMesh = GL.Mesh.plane({coords: true});

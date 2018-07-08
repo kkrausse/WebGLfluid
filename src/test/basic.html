@@ -5,15 +5,14 @@ window.onload = function() {
 	var image = document.getElementById('image');
 	gl = GL.create();
 	var sim = new Simulation2D(GL.Texture.fromImage(image,
-		{wrap: gl.CLAMP_TO_EDGE}));
+		{wrap: gl.CLAMP_TO_EDGE, type: gl.FLOAT}));
 	gl = sim.gl;
 
-	console.log(gl.REPEAT);
 	document.body.appendChild(gl.canvas);
 
 	var boundaryMesh = new GL.Mesh({coords: true});
-	boundaryMesh.vertices.push([0.1, 0.1, 0]);
-	boundaryMesh.vertices.push([0.1, 0.700, 0]);
+	boundaryMesh.vertices.push([0.9, 0.1, 0]);
+	boundaryMesh.vertices.push([0.9, 0.700, 0]);
 	boundaryMesh.vertices.push([0.400, 0.400, 0]);
 	boundaryMesh.triangles.push([0, 1, 2]);
 	boundaryMesh.compile();
@@ -23,8 +22,20 @@ window.onload = function() {
 		value: [0.1, 0.3, 0.2],
 		mode: gl.TRIANGLES
 	});
-	sim.run();
 
+	// make a line accross the bottom to create an upward flow
+	var velMesh = new GL.Mesh({lines: true});
+	velMesh.vertices.push([-0.9, -0.9, 0.0]);
+	velMesh.vertices.push([1.0, 0.0, 0.0]);
+	velMesh.lines = [0,1];
+	velMesh.compile();
+	sim.velocityBoundaries.push({
+		mesh: velMesh,
+		value: [0.0, 1.0, 0.0],
+		mode: gl.LINES
+	});
+
+	sim.run();
 };
 </script>
 <img id="image" src="my_face.jpg">

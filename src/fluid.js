@@ -3,7 +3,7 @@ var Simulation2D = (function() {
 	function Simulation2D(initialDensity) {
 		initialDensity = initialDensity;
 		this.gl = gl;
-		this.viscocity = 0.0;
+		this.viscocity = 0.000001;
 		this.nu = 0.02;
 		this.width = initialDensity.width;
 		this.height = initialDensity.height;
@@ -11,6 +11,7 @@ var Simulation2D = (function() {
 		this.densityField = initialDensity;
 		this.velocityField = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
 		this.tempTexture = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
+		this.tempTexture2 = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
 		// these are of the form {mesh: ,mode: , value:} where value is a 3d vector
 		this.densityBoundaries = [];
 		this.velocityBoundaries = [];
@@ -66,12 +67,7 @@ var Simulation2D = (function() {
 	// I have tested it, and it is unstable like it says.
 	// I cant get the speed of diffusion that may be needed
 	function diffuse(dt, field, diff, useStable) {
-			unstabShader = unstabShader || new GL.Shader('\
-				varying vec2 coord;\
-				void main() {\
-					coord = gl_TexCoord.st;\
-					gl_Position = gl_Vertex;\
-				}', [
+			unstabShader = unstabShader || new GL.Shader(basicVertexSource, [
 				'uniform sampler2D prevDiff;',
 				'uniform float diff;',
 				'uniform float dt;',
@@ -98,13 +94,8 @@ var Simulation2D = (function() {
 				'}',
 			].join('\n'));
 
-		stabDiffuseShader = stabDiffuseShader || new GL.Shader([
-			'varying vec2 coord;',
-			'void main() {',
-				'coord = gl_TexCoord.st;',
-				'gl_Position = gl_Vertex;',
-			'}'
-		].join('\n'), [
+		stabDiffuseShader = stabDiffuseShader || new GL.Shader(
+											basicVertexSource, [
 			'uniform sampler2D field;',
 			'uniform float diff;',
 			'uniform float dt;',
@@ -161,12 +152,7 @@ var Simulation2D = (function() {
 	}
 
 	function advect(dt, advected, advector) {
-		advectShader = advectShader || new GL.Shader('\
-			varying vec2 coord;\
-			void main() {\
-				coord = gl_TexCoord.st;\
-				gl_Position = gl_Vertex;\
-			}', [
+		advectShader = advectShader || new GL.Shader(basicVertexSource, [
 			'uniform sampler2D advected;',
 			'uniform sampler2D advector;',
 			'uniform float dt;',
@@ -174,10 +160,10 @@ var Simulation2D = (function() {
 
 			'void main() {',
 				'vec2 backtrace = texture2D(advector, coord).st;',
-				'vec2 texCoord = coord * 10.0;',
+				'vec2 texCoord = coord * 5.0;',
 				'backtrace *= dt;',
 				'texCoord -= backtrace;',
-				'gl_FragColor = texture2D(advected, texCoord / 10.0);',
+				'gl_FragColor = texture2D(advected, texCoord / 5.0);',
 		'}'].join('\n'));
 
 		advectorNum = advected.id === advector.id ? 0 : 1;
@@ -210,16 +196,58 @@ var Simulation2D = (function() {
 		}
 	}
 
-	/* I dont really need this right now.. */
-	function getSolidTexture(r, g, b) {
-		basicCanvas = basicCanvas || document.createElement('canvas');
-		var c = basicCanvas.getContext('2d');
-		basicCanvas.width = basicCanvas.height = 1;
-		c.fillStyle = 'rgb(' + r + ', ' + g + ', ' + b + ')';
-		c.fill();
-		return Texture.fromImage(basicCanvas);
+
+	// this is where we make the fluid incompressible
+	function project(dt) {
+		// this one sets the divergence
+		pShader1 = pShader1 || new GL.Shader(basicVertexSource, [
+			'uniform sampler2D velocity;',
+			'uniform vec2 textureSize;',
+			'varying vec2 coord;',
+
+			'float h = 1.0 / textureSize.x;',
+			'vec2 texelSize;',
+			'texelSize.x = 1.0 / textureSize.x;',
+			'texelSize.y = 1.0 / textureSize.y;',
+
+			'void main() {',
+				'vec2 texCoord = coord;',
+				'texCoord.x += texelSize.x;',
+				'float div = texture2D(velocity, texCoord).s;',
+				'texCoord.x -= 2.0 * texelSize.x;',
+				'div -= texture2D(velocity, texCoord).s;',
+				'texCoord += texelSize;',
+				'div += texture2D(velocity, texCoord).t;',
+				'texCoord.y -= 2.0 * texelSize.y;',
+				'div -= texture2D(velocity, texCoord).t;',
+
+				'gl_FragColor = -0.5*h*div;',
+			'}'
+		].join('\n'));
+
+		pShader2 = pShader2 || new GL.Shader(basicVertexSource, [
+
+		].join('\n'));
+
+		tempTexture.drawTo(function() {
+			this.velocityField.bind();
+			pShader1.uniforms({
+				textureSize: [this.velocityField.width,
+							this.velocityField.height]
+			}).draw(basicMesh);
+			this.velocityField.unbind();
+		});
+		// fill tempTexture2 with zeros.. it is 'p' in the paper's code
+		tempTexture2.drawTo(function() {
+			solidMeshShader.uniforms({
+				color: [0.0, 0.0, 0.0]
+			}).draw(basicMesh);
+		});
+
+
 	}
 
+	var pShader1, pShader2, pShader3;
 	var basicCanvas = null;
 	var unstabShader = null;
 	var advectShader = null;
@@ -227,16 +255,17 @@ var Simulation2D = (function() {
 	var solidMeshShader = null;
 	var basicTextureShader = null;
 	var stabDiffuseShader = null;
+	var basicVertexSource = [
+		'varying vec2 coord;',
+		'void main() {',
+			'coord = gl_TexCoord.st;',
+			'gl_Position = gl_Vertex;',
+		'}'
+	].join('\n')
 
 	function init() {
 		basicMesh = GL.Mesh.plane({coords: true});
-		basicTextureShader = new GL.Shader(
-			['varying vec2 coord;',
-			'void main() {',
-				'coord = gl_TexCoord.st;',
-				'gl_Position = gl_Vertex;',
-			'}',
-		''].join('\n'), ['',
+		basicTextureShader = new GL.Shader(basicVertexSource, [
 			'varying vec2 coord;',
 			'uniform sampler2D texture;',
 			'uniform vec4 color;',

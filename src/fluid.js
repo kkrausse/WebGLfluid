@@ -2,8 +2,8 @@ var Simulation2D = (function() {
 	function Simulation2D(initialDensity) {
 		initialDensity = initialDensity;
 		this.gl = gl;
-		this.viscocity = 0.001;
-		this.nu = 0.0002; // was at -.002
+		this.viscocity = 0.1;
+		this.nu = 0.02; // was at -.002
 		this.width = initialDensity.width;
 		this.height = initialDensity.height;
 		this.densityField = initialDensity;
@@ -12,7 +12,7 @@ var Simulation2D = (function() {
 		this.tempTexture = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
 		this.tempTexture2 = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
 		if (!this.tempTexture.canDrawTo()) 
-			alert('your system does not support rendering to floating point textures' +
+			handleError('your system does not support rendering to floating point textures' +
 					'which is unfortunately required for this demo!');
 
 		this.densityFuncs = [];
@@ -45,9 +45,12 @@ var Simulation2D = (function() {
 				basicMesh = basicMesh || GL.Mesh.plane({coords: true});
 
 				this.densityField.bind();
-			//	this.velocityField.bind();
-				basicTextureShader.draw(basicMesh);
-			//	coolVelocityShader.draw(basicMesh);
+				if (this.showVelocity) {
+					this.velocityField.bind();
+					coolVelocityShader.draw(basicMesh);
+				} else {
+					basicTextureShader.draw(basicMesh);
+				}
 
 				// draw the surface meshes
 				for (var i in this.surfaceMeshes) {
@@ -74,21 +77,12 @@ var Simulation2D = (function() {
 				this.velocityFuncs.push(drawFunc);
 			else
 				this.densityFuncs.push(drawFunc);
-		},
-		
-		// possible params:
-		// fanSpeed: int between -2 and 2
-		// renderVelocity: bool
-		// ballRadius: 
-		setParam: function(params) {
-
 		}
 	};
 
 	function velocityStep(dt) {
 		stableDiffuse.call(this, dt, this.velocityField, this.nu);
 		callWithBound(this.velocityFuncs, this.velocityField);
-	//project.call(this, dt);
 		checkFramebuffer();
 		advect.call(this, dt, this.velocityField, this.velocityField);
 		callWithBound(this.velocityFuncs, this.velocityField);
@@ -234,7 +228,7 @@ var Simulation2D = (function() {
 	}
 	
 	function project(dt) {
-		project1.call(this, dt, 9);
+		project1.call(this, dt, 7);
 		project1.call(this, dt, 1);
 	}
 

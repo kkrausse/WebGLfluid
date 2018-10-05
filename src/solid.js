@@ -9,8 +9,8 @@ var Solids = (function() {
 		this.windSpeed = 1;
 		this.vBoundaries = [];
 
-		var boundaryMesh = createCircle(0.05);
-		new MovableObj(boundaryMesh, inMeshFunc(boundaryMesh), this.simulation);
+		var boundaryMesh = createCircle(0.06);
+		this.moveable = new MovableObj(boundaryMesh, inMeshFunc(boundaryMesh), this.simulation);
 
 		addBoundaries.call(this);
 	}
@@ -48,7 +48,16 @@ var Solids = (function() {
 	Solids.prototype = {
 		inMeshFunc: inMeshFunc,
 		createCircle: createCircle,
-		MovableObj: MovableObj
+		MovableObj: MovableObj,
+		setWindSpeed: function(speed) {
+			this.windSpeed = speed;
+			this.vBoundaries = this.vBoundaries.map(function(b) {
+				if (b.windSpeed) {
+					b.value = [speed, 0, 0]
+				}
+				return b;
+			})
+		}
 	}
 
 	function addBoundaries() {
@@ -70,6 +79,9 @@ var Solids = (function() {
 		});
 		//right
 		this.vBoundaries.push({
+			// value depends on windspeed so it needs to change
+			// when windspeed changes
+			windSpeed: true,
 			mesh: getRectMesh([0.99, -1], 0.01, 2),
 			value: [this.windSpeed, 0, 0],
 			mode: gl.TRIANGLES
@@ -82,6 +94,7 @@ var Solids = (function() {
 		});
 		//left
 		this.vBoundaries.push({
+			windSpeed: true,
 			mesh: getRectMesh([-1, -1], 0.01, 2),
 			value: [this.windSpeed, 0, 0],
 			mode: gl.TRIANGLES

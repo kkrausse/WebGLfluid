@@ -1,34 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Fluid Simulation</title>
+
 <script src="../lightgl.js"></script>
 <script src="../fluid.js"></script>
 <script src="../solid.js"></script>
 <script>
-
-function print(str) {
-	var p = document.createElement('p');
-	p.appendChild(document.createTextNode(str));
-	document.body.appendChild(p);
-}
-
 window.onload = function() {
 	var image = document.getElementById('image');
+	console.log(image);
 	gl = GL.create();
 	var sim = new Simulation2D(GL.Texture.fromImage(image,
 		{wrap: gl.CLAMP_TO_EDGE, type: gl.FLOAT}));
 
 	gl = sim.gl;
 	var solids = new Solids(sim);
-
+	var sidebar = document.getElementById('sidebar');
 
 	document.body.appendChild(gl.canvas);
+
+	solids.setWindSpeed(0);
+	addNote("Controls:", "h2")
+	addNote("Move the black ball around to interract with the fluid.");
+	var windNode = addNote("wind speed: " + solids.windSpeed);
+	addControl([-100, 100], function(val) {
+		solids.setWindSpeed(val / 20);
+		windNode.nodeValue = "wind speed: " + solids.windSpeed;
+	}, 30);
+	var nuNode = addNote("velocity diffusion coefficient (negative values unstable):\n" + 
+		sim.nu.toFixed(2));
+	addControl([-100, 1000], function(val) {
+		sim.nu = val / 100;
+		nuNode.nodeValue = "velocity diffusion coefficient: " + sim.nu.toFixed(2);
+	}, 50);
+	var visNode = addNote("density diffusion constant: " + sim.viscocity);
+	addControl([-40, 500], function(val) {
+		sim.viscocity = val / 100;
+		visNode.nodeValue = "density diffusion constant: " + sim.viscocity;
+	}, 10);
+
+	var ending = document.getElementById("about");
+	//ending.setAttribute("hidden", "false");
+	sidebar.appendChild(ending);
+
+	// returns a control bar DOM element that when changed calls the
+	// callback with the new value
+	function addControl(range, callback, val) {
+		var slider = document.getElementById('slider').childNodes[1].cloneNode(true);
+		slider.setAttribute("min", range[0]);
+		slider.setAttribute("max", range[1]);
+		val = val || (range[0] + range[1]) / 2
+		slider.setAttribute("value", val);
+		slider.oninput = function() {
+			callback(this.value);
+		};
+		callback(val);
+		document.getElementById('sidebar').appendChild(slider);
+	}
+	function addNote(str, type) {
+		type = type || 'p';
+		var node = document.createElement(type);
+		var textNode = document.createTextNode(str);
+		node.appendChild(textNode);
+		document.getElementById('sidebar').appendChild(node);
+		return textNode
+	}
 
 
 	try {
 		sim.run();
 	} catch (e) {
-		print("got to this outer one");
 		console.log(e);
 	}
 	
 };
 </script>
-<img id="image" src="color.jpg" hidden="true" >
+<style type="text/css">
+	body {
+		background: black;
+		color: white;
+		font-size: 14px;
+	}
+	.slidecontainer {
+		width: 90%;
+	}
+	.slider {
+	    -webkit-appearance: none;  /* Override default CSS styles */
+	    appearance: none;
+	    width: auto; /* Full-width */
+	    height: 10px; /* Specified height */
+	    background: rgb(100, 100, 100); /* Grey background */
+	    outline: none; /* Remove outline */
+	    opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
+	    -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+	    transition: opacity .2s;
+	}
+	/* Mouse-over effects */
+	.slider:hover {
+	    opacity: 1; /* Fully shown on mouse-over */
+	}
+	a {
+		color: cyan;
+	}
+
+	canvas {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 65%;
+
+	}
+	h3, h2, p {
+		text-align: left;
+		padding-bottom: 5px;
+	}
+
+	#sidebar {
+		position: absolute;
+		right: 0;
+		width: 30%;
+		text-align: center;
+		overflow: auto;
+		padding-right: 10px;
+	}
+	#loading {
+		position: absolute;
+		left: 0; top: 50%; right: 600px;
+	}
+</style>
+</head>
+<body>
+	<img id="image" src="color.jpg" hidden="true" >
+	<div id="slider" class="slidecontainer" hidden="true">
+		<input type="range" class="slider">
+	</div>
+	<div id="loading">
+		loading...
+	</div>
+	<div id="sidebar">
+		<h1> WebGL Fluid Simulation </h1>
+		<p> by Kevin Krausse </p>
+		<p> 
+			This demo requires an up to date browser and rendering to floating
+			point textures, so for the latter reason it doesnt work
+			on most mobile devices.
+		</p>
+		<div id="about">
+			<h2>About</h2>
+			<p>
+				All credit to theory must be given to Jos Stam's 
+				<a href="http://www.dgp.toronto.edu/people/stam/reality/Research/pdf/GDC03.pdf">paper</a>
+				about real time fluid simuation. He describes an implementation using for
+				loops in C, but I implemented the for loops instead by rendering to a texture and using shader code in WebGL to implement the logic that would go inside of the for loops. In theory this should be faster becuase it
+				utilizes the computer's graphics hardware, but I haven't tested it.
+
+				Also, I used Evan Wallace's LightGL 
+				<a href="https://github.com/evanw/lightgl.js"> WebGL library </a> 
+				to help make things a little easier.
+			</p>
+		</div>
+	</div>
+</body>
+</html>

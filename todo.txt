@@ -5,11 +5,15 @@ which are the wind tunnel ones.
 
 done - Separate out all the shape stuff to a different file.
 
-- Add the boundary stuff for movement to make the movement of the object less shitty.
+kinda done - Add the boundary stuff for movement to make the movement of the object less bad.
 
-- Add functions to change params in each thing for the simulation or for the
+done - Add functions to change params in each thing for the simulation or for the
 	boundaries. Maybe add a demo object that combines the boundaries and demo.
 
-- Add controls for params
+done - Add controls for params
 
-- Write a little tidbit about it and reference that research paper about it.
+done - Write a little tidbit about it and reference that research paper about it.
+
+- Add control to shrink / enlarge shape size
+
+- Add control to change shape

@@ -80,6 +80,11 @@ var Simulation2D = (function() {
 		}
 	};
 
+	function handleError(str) {
+		var loadDiv = document.getElementById("loading");
+		loadDiv.textContent = str;
+	}
+
 	function velocityStep(dt) {
 		stableDiffuse.call(this, dt, this.velocityField, this.nu);
 		callWithBound(this.velocityFuncs, this.velocityField);

@@ -1,5 +1,6 @@
 <script src="../lightgl.js"></script>
 <script src="../fluid.js"></script>
+<script src="../solid.js"></script>
 <script>
 
 function print(str) {
@@ -13,60 +14,15 @@ window.onload = function() {
 	gl = GL.create();
 	var sim = new Simulation2D(GL.Texture.fromImage(image,
 		{wrap: gl.CLAMP_TO_EDGE, type: gl.FLOAT}));
-	
+
 	gl = sim.gl;
+	var solids = new Solids(sim);
 
 
 	document.body.appendChild(gl.canvas);
-/*
-	var boundaryMesh = new GL.Mesh({coords: true, normals: true});
-	boundaryMesh.vertices.push([0.2, -0.1, 0]);
-	boundaryMesh.vertices.push([0.0, 0.05, 0]);
-	boundaryMesh.vertices.push([0.200, 0.200, 0]);
-	boundaryMesh.normals.push([0.6, -0.6, 0.0]);
-	boundaryMesh.normals.push([-1.0, 0.0, 0.0]);
-	boundaryMesh.normals.push([0.6, 0.6, 0.0]);
-	boundaryMesh.triangles.push([0, 1, 2]);
-	boundaryMesh.computeWireframe();
-	boundaryMesh.compile();
-	console.log(sim.densityField.height);
-	console.log(boundaryMesh.normals);
-*/
-	var boundaryMesh = createCircle(0.05);
-	
 
-	new MovableObj(boundaryMesh, inMeshFunc(boundaryMesh), sim);
 
-	// the flow mesh
-	var velMesh = new GL.Mesh({lines: true});
-	velMesh.vertices.push([1.0, -1.0, 0.0]);
-	velMesh.vertices.push([1.0, 1.0, 0.0]);
-	velMesh.vertices.push([0.95, -1.0, 0.0]);
-	velMesh.vertices.push([0.95, 1.0, 0.0]);
-	velMesh.triangles = [[0, 1, 2], [1, 2, 3]];
-	velMesh.compile();
-	sim.velocityBoundaries.push({
-		mesh: velMesh,
-		value: [0, 0.0, 0.0],
-		mode: gl.TRIANGLES
-	});
-
-	var sMesh = new GL.Mesh();
-	sMesh.vertices.push([0.9, 0.05, 0.0]);
-	sMesh.vertices.push([1.0, 0.0, 0.0]);
-	sMesh.vertices.push([0.9, -0.05, 0.0]);
-	sMesh.triangles = [[0,1,2]];
-	sMesh.compile();
-	/*
-	sim.densityBoundaries.push({
-		mesh: sMesh,
-		value: [0.1, 0.0, 0.0],
-		mode: gl.TRIANGLES
-	});
-	*/
-	console.log(sim.velocityBoundaries);
 	try {
-		print("spare spare sper spare");
 		sim.run();
 	} catch (e) {
 		print("got to this outer one");

@@ -1,0 +1,15 @@
+done - Refactor to separate out boundary setting.
+
+done - Set the rest of the boundaries to zero, execpt for the left and right ones,
+which are the wind tunnel ones.
+
+done - Separate out all the shape stuff to a different file.
+
+- Add the boundary stuff for movement to make the movement of the object less shitty.
+
+- Add functions to change params in each thing for the simulation or for the
+	boundaries. Maybe add a demo object that combines the boundaries and demo.
+
+- Add controls for params
+
+- Write a little tidbit about it and reference that research paper about it.

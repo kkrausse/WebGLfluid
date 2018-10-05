@@ -15,9 +15,14 @@ var Simulation2D = (function() {
 			alert('your system does not support rendering to floating point textures' +
 					'which is unfortunately required for this demo!');
 
-		// these are of the form {mesh: ,mode: , value:} where value is a 3d vector
-		this.densityBoundaries = [];
-		this.velocityBoundaries = [];
+		this.densityFuncs = [];
+		this.velocityFuncs = [];
+
+		// surface meshes are drawn onto the screen after the fact and
+		// do not affect the density or any other part of the
+		// simulation.
+		// Used to draw the visual part of objects that dont diffuse,
+		// such as solid objects which only affect the velocity field.
 		this.surfaceMeshes = [];
 
 		init();
@@ -31,7 +36,6 @@ var Simulation2D = (function() {
 		},
 		run: function() {
 			gl = this.gl;
-			console.log('spare');
 
 			gl.onupdate = (function(dt) {
 				this.step(dt);
@@ -44,8 +48,6 @@ var Simulation2D = (function() {
 			//	this.velocityField.bind();
 				basicTextureShader.draw(basicMesh);
 			//	coolVelocityShader.draw(basicMesh);
-				this.velocityField.unbind();
-				this.densityField.unbind();
 
 				// draw the surface meshes
 				for (var i in this.surfaceMeshes) {
@@ -54,13 +56,26 @@ var Simulation2D = (function() {
 						color: m.color
 					}).draw(m.mesh);
 				}
+
+				this.velocityField.unbind();
+				this.densityField.unbind();
 			}).bind(this);
 			gl.ondraw();
 			gl.animate();
 		},
-		moveObj: function(id, dX, dY) {
-			moveObj.call(this, id, dX, dY);
+		// Call this to add a boundary function
+		// the function that you pass in will be called with either
+		// the velocity field bound (if you pass in true as the second
+		// arg) or the density(color) field bound.
+		//
+		// These will be called whenever the boundary needs to be set.
+		addBoundaryFunc: function(drawFunc, velocity) {
+			if (velocity)
+				this.velocityFuncs.push(drawFunc);
+			else
+				this.densityFuncs.push(drawFunc);
 		},
+		
 		// possible params:
 		// fanSpeed: int between -2 and 2
 		// renderVelocity: bool
@@ -71,22 +86,29 @@ var Simulation2D = (function() {
 	};
 
 	function velocityStep(dt) {
-		//setBoundary(this.velocityField, this.velocityBoundaries);
 		stableDiffuse.call(this, dt, this.velocityField, this.nu);
-		setBoundary(this.velocityField, this.velocityBoundaries);
-		//project.call(this, dt);
+		callWithBound(this.velocityFuncs, this.velocityField);
+	//project.call(this, dt);
 		checkFramebuffer();
 		advect.call(this, dt, this.velocityField, this.velocityField);
-		setBoundary(this.velocityField, this.velocityBoundaries);
+		callWithBound(this.velocityFuncs, this.velocityField);
 		project.call(this, dt);
-		setBoundary(this.velocityField, this.velocityBoundaries);
+		callWithBound(this.velocityFuncs, this.velocityField);
 	}
 
 	function densityStep(dt) {
 		unstableDiffuse.call(this, dt, this.densityField, this.viscocity);
-		setBoundary(this.densityField, this.densityBoundaries);
+		callWithBound(this.densityFuncs, this.densityField);
 		advect.call(this, dt, this.densityField, this.velocityField);
-		setBoundary(this.velocityField, this.velocityBoundaries);
+		callWithBound(this.velocityFuncs, this.velocityField);
+	}
+
+	function callWithBound(funcs, field) {
+		field.drawTo(function() {
+			funcs.map(function(f) {
+				f();
+			});
+		});
 	}
 
 	// this is the unstable version
@@ -211,25 +233,6 @@ var Simulation2D = (function() {
 		advected.swapWith(this.tempTexture);
 	}
 	
-	function setBoundary(fieldTexture, boundaries) {
-		for (var i in boundaries) {
-			var bound = boundaries[i];
-			if (bound.movement) { // set the movement force instead.
-				moveObj(bound.mesh, bound.movement[0], bound.movement[1], fieldTexture);
-				for (var i in bound.movement) {
-					bound.movement[i] = bound.movement[i] - bound.movement[i] * 0.8;
-				}
-			} else {
-				fieldTexture.drawTo(function() {
-					solidMeshShader.uniforms({
-						color: bound.value
-					}).draw(bound.mesh, bound.mode);
-				});
-			}
-		}
-	}
-
-
 	function project(dt) {
 		project1.call(this, dt, 9);
 		project1.call(this, dt, 1);
@@ -353,29 +356,6 @@ var Simulation2D = (function() {
 		this.velocityField.swapWith(this.tempTexture2);
 	}
 
-	function moveObj(mesh, dX, dY, velocityField) {
-		moveShader = moveShader || new GL.Shader([
-			'varying vec2 normal;',
-			'void main() {',
-				'normal = gl_Normal.xy;',
-				'gl_Position = gl_Vertex;',
-			'}',
-		].join('\n'), [
-			'uniform vec2 movementDir;',
-			'varying vec2 normal;',
-			'void main() {',
-				'gl_FragColor = vec4(dot(normal, movementDir)*normal, 0.0, 1.0);',
-			'}'
-		].join('\n'));
-			
-		velocityField.drawTo(function() {
-			moveShader.uniforms({
-				movementDir: [dX, dY]
-			}).draw(mesh, gl.TRIANGLES)
-		});
-		gl.popMatrix();
-	}
-
 	var moveShader;
 	var pShader1p;
 	var pShader1, pShader2, pShader3;
@@ -447,114 +427,3 @@ var Simulation2D = (function() {
 
 	return Simulation2D;
 })();
-
-function inMeshFunc(mesh) {
-	// all params assumed to be 2D arrays
-	function isInTriangle(v1, v2, v3, p) {
-		function sub(v1, v2) {
-			return [v1[0] - v2[0], v1[1] - v2[1]];
-		}
-		function cross(v1, v2) {
-			return v1[0] * v2[1] - v1[1] * v2[0];
-		}
-		function sameSign(a, b) {
-			return Math.abs(a + b) > Math.abs(a);
-		}
-		// checks if p1 and p2 are on the same side of the line formed by
-		// v1 and v2
-		function rightSide(v1, v2, p1, p2) {
-			var dir = sub(v2, v1);
-			return sameSign(cross(dir, sub(p1, v1)), cross(dir, sub(p2, v1)));
-		}
-
-		return rightSide(v1, v2, v3, p) && rightSide(v1, v3, v2, p) &&
-				rightSide(v2, v3, v1, p);
-	}
-	return function(e) {
-		var vs = mesh.vertices;
-		for (var i in mesh.triangles) {
-			var t = mesh.triangles[i];
-			if (isInTriangle(vs[t[0]], vs[t[1]], vs[t[2]], [e.x, e.y]))
-				return true;
-		}
-		return false;
-	}
-}
-
-//
-//
-function createCircle(radius) {
-	var numPoints = 20;
-	var mesh = new GL.Mesh({normals: true});
-	mesh.vertices.push([0.0, 0.0, 0.0]);
-	mesh.normals.push([0.0, 0.0, 0.0]);
-	for (var i = 0; i < numPoints; i++) {
-		var theta = i * 2 * Math.PI / numPoints;
-		var p = [Math.cos(theta)*radius, Math.sin(theta)*radius, 0];
-		mesh.vertices.push(p);
-		mesh.normals.push(p);
-		mesh.triangles.push([0, mesh.vertices.length-1, mesh.vertices.length]);
-	}
-	var t = mesh.triangles.pop();
-	t[2] = 1;
-	mesh.triangles.push(t);
-	mesh.compile();
-	return mesh;
-}
-
-function MovableObj(mesh, isInside, sim) {
-	this.mesh = mesh;
-	this.sim = sim;
-	mesh.v0 = mesh.vertices[0].slice();
-	this.isInside = isInside;
-	this.selected = false;
-	this.id = sim.surfaceMeshes.length;
-	this.movement = [0.0, 0.0];
-	
-	sim.surfaceMeshes.push({
-		mesh: mesh,
-		color: [0.0, 0.1, 0.3]
-	});
-
-	sim.velocityBoundaries.push({
-		mesh: mesh,
-		movement: this.movement,
-		value: [0.0, 0.0, 0.0],
-		mode: gl.TRIANGLES
-	});
-	
-	function normalize(e) {
-		var w = gl.canvas.width;
-		var h = gl.canvas.height;
-		e.x = e.x * 2 / w - 1;
-		e.deltaX /= w / 2;
-		e.y = 1 - e.y * 2 / h;
-		e.deltaY /= -h/2;
-	}
-
-	gl.onmousedown = (function(e) {
-		normalize(e);
-		if (this.isInside(e))
-			this.selected = true;
-	}).bind(this);
-
-	gl.onmouseup = (function(e) {
-		this.selected = false;
-	}).bind(this);
-
-	gl.onmousemove = (function(e) {
-		if (this.selected) move.call(this, e);
-	}).bind(this);
-
-	function move(e) {
-		normalize(e);
-		for (var i in this.mesh.vertices) {
-			var vert = this.mesh.vertices[i];
-			vert[0] += e.deltaX;
-			vert[1] += e.deltaY;
-		}
-		this.mesh.compile();
-		this.movement[0] += e.deltaX * 3000;
-		this.movement[1] += e.deltaY * 3000;
-	}
-}

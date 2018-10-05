@@ -7,9 +7,16 @@
 <script src="./src/fluid.js"></script>
 <script src="./src/solid.js"></script>
 <script>
+console.log("spare");
+function handleError(str) {
+	var loadDiv = document.getElementById("loading");
+	console.log("what is going on?" + loadDiv);
+	loadDiv.textContent = str;
+	console.log(str);
+}
+
 window.onload = function() {
 	var image = document.getElementById('image');
-	console.log(image);
 	gl = GL.create();
 	var sim = new Simulation2D(GL.Texture.fromImage(image,
 		{wrap: gl.CLAMP_TO_EDGE, type: gl.FLOAT}));

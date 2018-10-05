@@ -13,7 +13,7 @@ var Simulation2D = (function() {
 		this.tempTexture2 = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
 		if (!this.tempTexture.canDrawTo()) 
 			handleError('your system does not support rendering to floating point textures' +
-					'which is unfortunately required for this demo!');
+					' which is required for this demo!');
 
 		this.densityFuncs = [];
 		this.velocityFuncs = [];

@@ -1493,6 +1493,7 @@ function Shader(vertexSource, fragmentSource) {
   ';
   var fragmentHeader = '\
     precision highp float;\
+    precision highp sampler2D;\
   ' + header;
 
   // Check for the use of built-in matrices that require expensive matrix

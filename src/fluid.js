@@ -1,61 +1,85 @@
 var Simulation2D = (function() {
-	// make sure you set type: gl.FLOAT for the textures! we need the precision
 	function Simulation2D(initialDensity) {
 		initialDensity = initialDensity;
 		this.gl = gl;
-		this.viscocity = 0.0000001;
-		this.nu = 0.0000001;
+		this.viscocity = 0.001;
+		this.nu = 0.0002; // was at -.002
 		this.width = initialDensity.width;
 		this.height = initialDensity.height;
-		this.sources = null;
 		this.densityField = initialDensity;
+
 		this.velocityField = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
-		this.tempTexture = new GL.Texture(this.width, this.height, {type: gl.FLOAT, format: gl.RG});
-		this.tempTexture2 = new GL.Texture(this.width, this.height, {type: gl.FLOAT, format: gl.RG});
+		this.tempTexture = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
+		this.tempTexture2 = new GL.Texture(this.width, this.height, {type: gl.FLOAT});
+		if (!this.tempTexture.canDrawTo()) 
+			alert('your system does not support rendering to floating point textures' +
+					'which is unfortunately required for this demo!');
+
 		// these are of the form {mesh: ,mode: , value:} where value is a 3d vector
 		this.densityBoundaries = [];
 		this.velocityBoundaries = [];
+		this.surfaceMeshes = [];
 
 		init();
 	}
 
 	Simulation2D.prototype = {
 		step: function(dt) {
-			// first get user input or whatever. Maybe thats already coded into
-			// boundary meshes or the boundary texture?
-
+			dt = dt;
 			velocityStep.call(this, dt);
 			densityStep.call(this, dt);
 		},
 		run: function() {
 			gl = this.gl;
+			console.log('spare');
 
 			gl.onupdate = (function(dt) {
 				this.step(dt);
 			}).bind(this);
+
 			gl.ondraw = (function() {
 				basicMesh = basicMesh || GL.Mesh.plane({coords: true});
+
 				this.densityField.bind();
-				this.velocityField.bind();
-				basicTextureShader.uniforms({
-					color: [0.1, 0.2, 0.1, 1.0]
-				}).draw(basicMesh);
+			//	this.velocityField.bind();
+				basicTextureShader.draw(basicMesh);
+			//	coolVelocityShader.draw(basicMesh);
 				this.velocityField.unbind();
 				this.densityField.unbind();
+
+				// draw the surface meshes
+				for (var i in this.surfaceMeshes) {
+					var m = this.surfaceMeshes[i];
+					solidMeshShader.uniforms({
+						color: m.color
+					}).draw(m.mesh);
+				}
 			}).bind(this);
-			//gl.onupdate(0.001);
 			gl.ondraw();
 			gl.animate();
+		},
+		moveObj: function(id, dX, dY) {
+			moveObj.call(this, id, dX, dY);
+		},
+		// possible params:
+		// fanSpeed: int between -2 and 2
+		// renderVelocity: bool
+		// ballRadius: 
+		setParam: function(params) {
+
 		}
 	};
 
 	function velocityStep(dt) {
+		//setBoundary(this.velocityField, this.velocityBoundaries);
 		stableDiffuse.call(this, dt, this.velocityField, this.nu);
 		setBoundary(this.velocityField, this.velocityBoundaries);
-		project.call(this, dt);
+		//project.call(this, dt);
+		checkFramebuffer();
 		advect.call(this, dt, this.velocityField, this.velocityField);
 		setBoundary(this.velocityField, this.velocityBoundaries);
 		project.call(this, dt);
+		setBoundary(this.velocityField, this.velocityBoundaries);
 	}
 
 	function densityStep(dt) {
@@ -88,7 +112,7 @@ var Simulation2D = (function() {
 					'densityChange += texture2D(prevDiff, texCoord);',
 					'texCoord.y -= 2.0 * texelSize.y;',
 					'densityChange += texture2D(prevDiff, texCoord);',
-					'densityChange *= diff * textureSize.x * dt * textureSize.y;',
+					'densityChange *= diff * dt ;',
 					'',
 					'gl_FragColor = texture2D(prevDiff, coord) + densityChange;',
 				'}',
@@ -118,7 +142,7 @@ var Simulation2D = (function() {
 
 			'void main() {',
 				'vec2 texCoord = coord;',
-				'float a = diff * textureSize.x * dt * textureSize.y;',
+				'float a = diff * dt;',
 				'vec4 change;',
 				
 				'texCoord.x += texelSize.x;',
@@ -136,14 +160,14 @@ var Simulation2D = (function() {
 			'}'
 		].join('\n'));
 
-		for (var i = 0; i < 5; i++) {
+		for (var i = 0; i < 3; i++) {
 			this.tempTexture.drawTo(function() {
 				field.bind();
 				stabDiffuseShader.uniforms({
 					diff: diff,
 					dt: dt,
 					textureSize: [field.width, field.height],
-					texelSize: [1.0 / field.width, 1.0 / field.height]
+					texelSize: [1 / field.width, 1 / field.height]
 				}).draw(basicMesh);
 				field.unbind();
 			});
@@ -178,7 +202,7 @@ var Simulation2D = (function() {
 				advected: 0,
 				advector: advectorNum,
 				dt: dt,
-				backtraceDivisor: 4
+				backtraceDivisor: 20
 			}).draw(basicMesh);
 			advected.unbind(0);
 			advector.unbind(advectorNum);
@@ -190,17 +214,30 @@ var Simulation2D = (function() {
 	function setBoundary(fieldTexture, boundaries) {
 		for (var i in boundaries) {
 			var bound = boundaries[i];
-			fieldTexture.drawTo(function() {
-				solidMeshShader.uniforms({
-					color: bound.value
-				}).draw(bound.mesh, bound.mode);
-			});
+			if (bound.movement) { // set the movement force instead.
+				moveObj(bound.mesh, bound.movement[0], bound.movement[1], fieldTexture);
+				for (var i in bound.movement) {
+					bound.movement[i] = bound.movement[i] - bound.movement[i] * 0.8;
+				}
+			} else {
+				fieldTexture.drawTo(function() {
+					solidMeshShader.uniforms({
+						color: bound.value
+					}).draw(bound.mesh, bound.mode);
+				});
+			}
 		}
 	}
 
 
-	// this is where we make the fluid incompressible
 	function project(dt) {
+		project1.call(this, dt, 9);
+		project1.call(this, dt, 1);
+	}
+
+	// this is where we make the fluid incompressible
+	function project1(dt, range) {
+		range = range || 1;
 		// this one sets the divergence and initial p 
 		// divergence goes in the 'r' spot of the tempTexture and
 		// p goes in the 'g' spot
@@ -220,7 +257,7 @@ var Simulation2D = (function() {
 				'texCoord.y -= 2.0 * texelSize.y;',
 				'div -= texture2D(velocity, texCoord).t;',
 
-				'gl_FragColor = vec4(-0.9*div, 0.0, 0.0, 1.0);',
+				'gl_FragColor = vec4(-texelSize.x * div, 0.0, 0.0, 1.0);',
 			'}'
 		].join('\n'));
 
@@ -264,13 +301,13 @@ var Simulation2D = (function() {
 				'tmp = texture2D(divergence, texCoord).t;',
 				'texCoord.x -= 2.0 * texelSize.x;',
 				'tmp -= texture2D(divergence, texCoord).t;',
-				'newVelocity.x -= 0.5 * tmp ;',
+				'newVelocity.x -= 0.5 * tmp / texelSize.x ;',
 
 				'texCoord += texelSize;',
 				'tmp = texture2D(divergence, texCoord).t;',
 				'texCoord.y -= 2.0 * texelSize.y;',
 				'tmp -= texture2D(divergence, texCoord).t;',
-				'newVelocity.y -= 0.5 *tmp ;',
+				'newVelocity.y -= 0.5 * tmp / texelSize.y ;',
 				
 				'gl_FragColor = vec4(newVelocity, 0.0, 1.0);',
 			'}'
@@ -280,20 +317,20 @@ var Simulation2D = (function() {
 		this.tempTexture.drawTo(function() {
 			vField.bind();
 			pShader1.uniforms({
-				texelSize: [1.0 / vField.width,
-							1.0 / vField.height]
+				texelSize: [range / vField.width,
+							range / vField.height]
 			}).draw(basicMesh);
 			vField.unbind();
 		});
 		
 		// main loop to solve for the height field p
-		for (var i = 0; i < 10; i++) {
+		for (var i = 0; i < 5; i++) {
 			var tmpTex = this.tempTexture;
 			this.tempTexture2.drawTo(function() {
 				tmpTex.bind();
 				pShader2.uniforms({
-					texelSize: [1.0 / tmpTex.width,
-								1.0 / tmpTex.height]
+					texelSize: [range / tmpTex.width,
+								range / tmpTex.height]
 				}).draw(basicMesh);
 				tmpTex.unbind();
 			});
@@ -306,8 +343,8 @@ var Simulation2D = (function() {
 			pShader3.uniforms({
 				divergence: 0,
 				velocity: 1,
-				texelSize: [1.0 / this.tempTexture.width,
-							1.0 / this.tempTexture.height]
+				texelSize: [range / this.tempTexture.width,
+							range / this.tempTexture.height]
 			}).draw(basicMesh);
 			this.tempTexture.unbind(0);
 			this.velocityField.unbind(1);
@@ -316,6 +353,31 @@ var Simulation2D = (function() {
 		this.velocityField.swapWith(this.tempTexture2);
 	}
 
+	function moveObj(mesh, dX, dY, velocityField) {
+		moveShader = moveShader || new GL.Shader([
+			'varying vec2 normal;',
+			'void main() {',
+				'normal = gl_Normal.xy;',
+				'gl_Position = gl_Vertex;',
+			'}',
+		].join('\n'), [
+			'uniform vec2 movementDir;',
+			'varying vec2 normal;',
+			'void main() {',
+				'gl_FragColor = vec4(dot(normal, movementDir)*normal, 0.0, 1.0);',
+			'}'
+		].join('\n'));
+			
+		velocityField.drawTo(function() {
+			moveShader.uniforms({
+				movementDir: [dX, dY]
+			}).draw(mesh, gl.TRIANGLES)
+		});
+		gl.popMatrix();
+	}
+
+	var moveShader;
+	var pShader1p;
 	var pShader1, pShader2, pShader3;
 	var basicCanvas = null;
 	var unstabShader = null;
@@ -337,9 +399,7 @@ var Simulation2D = (function() {
 		basicTextureShader = new GL.Shader(basicVertexSource, [
 			'varying vec2 coord;',
 			'uniform sampler2D texture;',
-			'uniform vec4 color;',
 			'void main() {',
-				'gl_FragColor = color;',
 				'gl_FragColor = vec4(texture2D(texture, coord).rgb, 1.0);',
 			'}'].join('\n'));
 
@@ -353,7 +413,148 @@ var Simulation2D = (function() {
 				gl_FragColor = vec4(color, 1.0);\
 			}'
 		);
+
+		coolVelocityShader = new GL.Shader(basicVertexSource, [
+			'varying vec2 coord;',
+			'uniform sampler2D texture;',
+			'void main() {',
+				'vec2 v = texture2D(texture, coord).rg;',
+				'float xDir = v.r / length(v);',
+				'xDir = (xDir + 1.0) / 2.0;',
+				'gl_FragColor = vec4(xDir, 1.0 - xDir, length(v), 1.0);',
+			'}'].join('\n'));
+	}
+
+	function checkFramebuffer() {
+		printFramebufferProblem(gl.checkFramebufferStatus(gl.FRAMEBUFFER));
+		function printFramebufferProblem(c) {
+			switch (c) {
+			case gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+				console.log('incomplete attatchment');
+				break;
+			case gl.FRAMEBUFFER_INCOMPLETE_DIMENSIONS:
+				console.log('incomplete dim');
+				break;
+			case gl.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+				console.log('missing attatchment');
+				break;
+			case gl.FRAMEBUFFER_UNSUPPORTED:
+				console.log('framebuff unsupported');
+				break;
+			}
+		}
 	}
 
 	return Simulation2D;
 })();
+
+function inMeshFunc(mesh) {
+	// all params assumed to be 2D arrays
+	function isInTriangle(v1, v2, v3, p) {
+		function sub(v1, v2) {
+			return [v1[0] - v2[0], v1[1] - v2[1]];
+		}
+		function cross(v1, v2) {
+			return v1[0] * v2[1] - v1[1] * v2[0];
+		}
+		function sameSign(a, b) {
+			return Math.abs(a + b) > Math.abs(a);
+		}
+		// checks if p1 and p2 are on the same side of the line formed by
+		// v1 and v2
+		function rightSide(v1, v2, p1, p2) {
+			var dir = sub(v2, v1);
+			return sameSign(cross(dir, sub(p1, v1)), cross(dir, sub(p2, v1)));
+		}
+
+		return rightSide(v1, v2, v3, p) && rightSide(v1, v3, v2, p) &&
+				rightSide(v2, v3, v1, p);
+	}
+	return function(e) {
+		var vs = mesh.vertices;
+		for (var i in mesh.triangles) {
+			var t = mesh.triangles[i];
+			if (isInTriangle(vs[t[0]], vs[t[1]], vs[t[2]], [e.x, e.y]))
+				return true;
+		}
+		return false;
+	}
+}
+
+//
+//
+function createCircle(radius) {
+	var numPoints = 20;
+	var mesh = new GL.Mesh({normals: true});
+	mesh.vertices.push([0.0, 0.0, 0.0]);
+	mesh.normals.push([0.0, 0.0, 0.0]);
+	for (var i = 0; i < numPoints; i++) {
+		var theta = i * 2 * Math.PI / numPoints;
+		var p = [Math.cos(theta)*radius, Math.sin(theta)*radius, 0];
+		mesh.vertices.push(p);
+		mesh.normals.push(p);
+		mesh.triangles.push([0, mesh.vertices.length-1, mesh.vertices.length]);
+	}
+	var t = mesh.triangles.pop();
+	t[2] = 1;
+	mesh.triangles.push(t);
+	mesh.compile();
+	return mesh;
+}
+
+function MovableObj(mesh, isInside, sim) {
+	this.mesh = mesh;
+	this.sim = sim;
+	mesh.v0 = mesh.vertices[0].slice();
+	this.isInside = isInside;
+	this.selected = false;
+	this.id = sim.surfaceMeshes.length;
+	this.movement = [0.0, 0.0];
+	
+	sim.surfaceMeshes.push({
+		mesh: mesh,
+		color: [0.0, 0.1, 0.3]
+	});
+
+	sim.velocityBoundaries.push({
+		mesh: mesh,
+		movement: this.movement,
+		value: [0.0, 0.0, 0.0],
+		mode: gl.TRIANGLES
+	});
+	
+	function normalize(e) {
+		var w = gl.canvas.width;
+		var h = gl.canvas.height;
+		e.x = e.x * 2 / w - 1;
+		e.deltaX /= w / 2;
+		e.y = 1 - e.y * 2 / h;
+		e.deltaY /= -h/2;
+	}
+
+	gl.onmousedown = (function(e) {
+		normalize(e);
+		if (this.isInside(e))
+			this.selected = true;
+	}).bind(this);
+
+	gl.onmouseup = (function(e) {
+		this.selected = false;
+	}).bind(this);
+
+	gl.onmousemove = (function(e) {
+		if (this.selected) move.call(this, e);
+	}).bind(this);
+
+	function move(e) {
+		normalize(e);
+		for (var i in this.mesh.vertices) {
+			var vert = this.mesh.vertices[i];
+			vert[0] += e.deltaX;
+			vert[1] += e.deltaY;
+		}
+		this.mesh.compile();
+		this.movement[0] += e.deltaX * 3000;
+		this.movement[1] += e.deltaY * 3000;
+	}
+}

@@ -1,45 +1,78 @@
 <script src="../lightgl.js"></script>
 <script src="../fluid.js"></script>
 <script>
+
+function print(str) {
+	var p = document.createElement('p');
+	p.appendChild(document.createTextNode(str));
+	document.body.appendChild(p);
+}
+
 window.onload = function() {
 	var image = document.getElementById('image');
 	gl = GL.create();
 	var sim = new Simulation2D(GL.Texture.fromImage(image,
 		{wrap: gl.CLAMP_TO_EDGE, type: gl.FLOAT}));
+	
 	gl = sim.gl;
 
-	document.body.appendChild(gl.canvas);
 
-	var boundaryMesh = new GL.Mesh({coords: true});
-	boundaryMesh.vertices.push([0.4, -0.2, 0]);
-	boundaryMesh.vertices.push([0.0, 0.100, 0]);
-	boundaryMesh.vertices.push([0.400, 0.400, 0]);
+	document.body.appendChild(gl.canvas);
+/*
+	var boundaryMesh = new GL.Mesh({coords: true, normals: true});
+	boundaryMesh.vertices.push([0.2, -0.1, 0]);
+	boundaryMesh.vertices.push([0.0, 0.05, 0]);
+	boundaryMesh.vertices.push([0.200, 0.200, 0]);
+	boundaryMesh.normals.push([0.6, -0.6, 0.0]);
+	boundaryMesh.normals.push([-1.0, 0.0, 0.0]);
+	boundaryMesh.normals.push([0.6, 0.6, 0.0]);
 	boundaryMesh.triangles.push([0, 1, 2]);
+	boundaryMesh.computeWireframe();
 	boundaryMesh.compile();
 	console.log(sim.densityField.height);
-	sim.velocityBoundaries.push({
-		mesh: boundaryMesh,
-		value: [0.0, 0.0, 0.0],
-		mode: gl.TRIANGLES
-	});
-	sim.densityBoundaries.push({
-		mesh: boundaryMesh,
-		value: [0.1, 0.3, 0.2],
-		mode: gl.TRIANGLES
-	});
+	console.log(boundaryMesh.normals);
+*/
+	var boundaryMesh = createCircle(0.05);
+	
 
+	new MovableObj(boundaryMesh, inMeshFunc(boundaryMesh), sim);
+
+	// the flow mesh
 	var velMesh = new GL.Mesh({lines: true});
-	velMesh.vertices.push([-1.0, -1.0, 0.0]);
-	velMesh.vertices.push([-1.0, 1.0, 0.0]);
-	velMesh.lines = [0,1];
+	velMesh.vertices.push([1.0, -1.0, 0.0]);
+	velMesh.vertices.push([1.0, 1.0, 0.0]);
+	velMesh.vertices.push([0.95, -1.0, 0.0]);
+	velMesh.vertices.push([0.95, 1.0, 0.0]);
+	velMesh.triangles = [[0, 1, 2], [1, 2, 3]];
 	velMesh.compile();
 	sim.velocityBoundaries.push({
 		mesh: velMesh,
-		value: [0.7, 0.0, 0.0],
-		mode: gl.LINES
+		value: [0, 0.0, 0.0],
+		mode: gl.TRIANGLES
 	});
-	gl.lineWidth(50.0);
-	sim.run();
+
+	var sMesh = new GL.Mesh();
+	sMesh.vertices.push([0.9, 0.05, 0.0]);
+	sMesh.vertices.push([1.0, 0.0, 0.0]);
+	sMesh.vertices.push([0.9, -0.05, 0.0]);
+	sMesh.triangles = [[0,1,2]];
+	sMesh.compile();
+	/*
+	sim.densityBoundaries.push({
+		mesh: sMesh,
+		value: [0.1, 0.0, 0.0],
+		mode: gl.TRIANGLES
+	});
+	*/
+	console.log(sim.velocityBoundaries);
+	try {
+		print("spare spare sper spare");
+		sim.run();
+	} catch (e) {
+		print("got to this outer one");
+		console.log(e);
+	}
+	
 };
 </script>
-<img id="image" src="my_face2.jpg" >
+<img id="image" src="color.jpg" hidden="true" >
